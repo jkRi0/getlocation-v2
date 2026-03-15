@@ -6,6 +6,7 @@ const els = {
   btnStop: document.getElementById('btnStop'),
   searchId: document.getElementById('searchId'),
   btnSearch: document.getElementById('btnSearch'),
+  btnStopView: document.getElementById('btnStopView'),
   status: document.getElementById('status'),
 };
 
@@ -14,6 +15,8 @@ let marker;
 let searchedMarker;
 let watchId = null;
 let sharingKey = null;
+let viewTimer = null;
+let viewingKey = null;
 
 async function saveLocationToServer(id, lat, lng) {
   const resp = await fetch('/api/location/save', {
@@ -132,6 +135,15 @@ function setSearchedMarker(lat, lng, id) {
   map.setView([lat, lng], 16);
 }
 
+function stopViewing() {
+  if (viewTimer !== null) {
+    clearInterval(viewTimer);
+  }
+  viewTimer = null;
+  viewingKey = null;
+  if (els.btnStopView) els.btnStopView.disabled = true;
+}
+
 function getLocation() {
   const id = normalizeId(els.userId.value);
 
@@ -230,6 +242,8 @@ async function searchIdLocation() {
     return;
   }
 
+  stopViewing();
+
   if (els.btnSearch) els.btnSearch.disabled = true;
   setStatus(`Searching location for ID "${id}"...`);
 
@@ -245,7 +259,33 @@ async function searchIdLocation() {
     }
 
     setSearchedMarker(lat, lng, id);
-    setStatus(`Showing saved location for ID "${id}".`);
+
+    viewingKey = id;
+    if (els.btnStopView) els.btnStopView.disabled = false;
+
+    viewTimer = setInterval(async () => {
+      if (!viewingKey) return;
+      try {
+        const d = await getLocationFromServer(viewingKey);
+        const v = d?.value;
+        const la = Number(v?.lat);
+        const ln = Number(v?.lng);
+        if (Number.isFinite(la) && Number.isFinite(ln)) {
+          setSearchedMarker(la, ln, viewingKey);
+        }
+      } catch (e) {
+        const missing = e?.httpStatus === 404;
+        const key = viewingKey;
+        stopViewing();
+        if (missing) {
+          setStatus(`No saved location found for ID "${key}".`);
+        } else {
+          setStatus(`Viewing stopped: ${e?.message || 'Unknown error'}`);
+        }
+      }
+    }, 1000);
+
+    setStatus(`Viewing ID "${id}" (auto-updating every 1s).`);
   } catch (e) {
     if (e?.httpStatus === 404) {
       setStatus(`No saved location found for ID "${id}".`);
@@ -267,6 +307,10 @@ function init() {
   });
 
   els.btnSearch?.addEventListener('click', searchIdLocation);
+  els.btnStopView?.addEventListener('click', () => {
+    stopViewing();
+    setStatus('Stopped viewing.');
+  });
   els.searchId?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') searchIdLocation();
   });

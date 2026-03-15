@@ -1,0 +1,9 @@
+{
+  "name": "getlocation-v2",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": {
+    "@vercel/edge-config": "^1.4.0"
+  }
+}

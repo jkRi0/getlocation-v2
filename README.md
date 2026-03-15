@@ -19,3 +19,7 @@ This repo includes:
 Open the deployed site and click **Load from Edge Config**.
 
 You can request multiple keys by entering comma-separated keys (example: `publicMessage, featureFlag`).
+
+
+
+### FAILED, TOO MANY REQUESTS

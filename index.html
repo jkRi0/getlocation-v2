@@ -48,6 +48,10 @@
         align-items: center;
       }
 
+      .controls-3 {
+        grid-template-columns: 1fr auto auto;
+      }
+
       label {
         font-size: 12px;
         color: #374151;
@@ -110,9 +114,10 @@
           <label for="userId">Your ID (this device will save its location under this ID)</label>
         </div>
         <div class="row">
-          <div class="controls">
+          <div class="controls controls-3">
             <input id="userId" type="text" placeholder="e.g. user123" autocomplete="off" />
             <button id="btnLocate" type="button">Get My Location</button>
+            <button id="btnStop" type="button" disabled>Stop Sharing</button>
           </div>
           <div>
             <label for="searchId">Search an ID (show saved location)</label>

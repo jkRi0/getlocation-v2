@@ -3,6 +3,7 @@
 const els = {
   userId: document.getElementById('userId'),
   btnLocate: document.getElementById('btnLocate'),
+  btnStop: document.getElementById('btnStop'),
   searchId: document.getElementById('searchId'),
   btnSearch: document.getElementById('btnSearch'),
   status: document.getElementById('status'),
@@ -11,6 +12,8 @@ const els = {
 let map;
 let marker;
 let searchedMarker;
+let watchId = null;
+let sharingKey = null;
 
 async function saveLocationToServer(id, lat, lng) {
   const resp = await fetch('/api/location/save', {
@@ -19,6 +22,29 @@ async function saveLocationToServer(id, lat, lng) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ id, lat, lng }),
+  });
+
+  const data = await resp.json().catch(() => null);
+  if (!resp.ok) {
+    const parts = [];
+    if (data?.error) parts.push(data.error);
+    if (data?.key) parts.push(`key=${data.key}`);
+    if (data?.status) parts.push(`upstreamStatus=${data.status}`);
+    if (data?.details) parts.push(`details=${typeof data.details === 'string' ? data.details : JSON.stringify(data.details)}`);
+    const detail = parts.length ? parts.join(' | ') : `HTTP ${resp.status}`;
+    throw new Error(detail);
+  }
+
+  return data;
+}
+
+async function deleteLocationFromServer(id) {
+  const resp = await fetch('/api/location/delete', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ id }),
   });
 
   const data = await resp.json().catch(() => null);
@@ -120,22 +146,30 @@ function getLocation() {
     return;
   }
 
+  if (watchId !== null) {
+    setStatus('Already sharing location. Click “Stop Sharing” to stop.');
+    return;
+  }
+
   els.btnLocate.disabled = true;
   setStatus('Requesting location permission...');
 
-  navigator.geolocation.getCurrentPosition(
+  sharingKey = id;
+  watchId = navigator.geolocation.watchPosition(
     async (pos) => {
       const { latitude, longitude, accuracy } = pos.coords;
-      setStatus(`Location acquired (±${Math.round(accuracy)}m). Saving...`);
+
       setUserMarker(latitude, longitude, id);
+      setStatus(`Sharing live location for ID "${id}" (±${Math.round(accuracy)}m). Updating...`);
 
       try {
         await saveLocationToServer(id, latitude, longitude);
-        setStatus(`Saved for ID "${id}" (±${Math.round(accuracy)}m). Showing on map.`);
+        setStatus(`Sharing live location for ID "${id}" (±${Math.round(accuracy)}m).`);
       } catch (e) {
-        setStatus(`Location acquired but failed to save: ${e?.message || 'Unknown error'}`);
+        setStatus(`Sharing is ON but update failed: ${e?.message || 'Unknown error'}`);
       }
 
+      if (els.btnStop) els.btnStop.disabled = false;
       els.btnLocate.disabled = false;
     },
     (err) => {
@@ -144,14 +178,48 @@ function getLocation() {
       if (err?.code === err.POSITION_UNAVAILABLE) msg = 'Position unavailable.';
       if (err?.code === err.TIMEOUT) msg = 'Location request timed out.';
       setStatus(msg);
+
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+      watchId = null;
+      sharingKey = null;
       els.btnLocate.disabled = false;
+      if (els.btnStop) els.btnStop.disabled = true;
     },
     {
       enableHighAccuracy: true,
-      timeout: 15000,
       maximumAge: 0,
+      timeout: 15000,
     },
   );
+}
+
+async function stopSharing() {
+  if (watchId === null) {
+    setStatus('Not currently sharing.');
+    return;
+  }
+
+  const id = sharingKey;
+
+  navigator.geolocation.clearWatch(watchId);
+  watchId = null;
+  sharingKey = null;
+  if (els.btnStop) els.btnStop.disabled = true;
+
+  if (!id) {
+    setStatus('Stopped sharing.');
+    return;
+  }
+
+  setStatus(`Stopping sharing for ID "${id}"...`);
+  try {
+    await deleteLocationFromServer(id);
+    setStatus(`Stopped sharing and deleted ID "${id}" from store.`);
+  } catch (e) {
+    setStatus(`Stopped sharing but failed to delete: ${e?.message || 'Unknown error'}`);
+  }
 }
 
 async function searchIdLocation() {
@@ -193,6 +261,7 @@ function init() {
   ensureMap();
 
   els.btnLocate.addEventListener('click', getLocation);
+  els.btnStop?.addEventListener('click', stopSharing);
   els.userId.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') getLocation();
   });

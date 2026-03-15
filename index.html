@@ -3,35 +3,129 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Edge Config Demo</title>
+    <title>Get Location</title>
+
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+
     <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
-      .card { max-width: 720px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; }
-      label { display: block; margin-top: 12px; font-weight: 600; }
-      input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #d1d5db; }
-      button { margin-top: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #111827; background: #111827; color: white; cursor: pointer; }
-      button:disabled { opacity: 0.6; cursor: not-allowed; }
-      pre { background: #0b1020; color: #e5e7eb; padding: 12px; border-radius: 10px; overflow: auto; }
-      .muted { color: #6b7280; }
-      .error { color: #b91c1c; font-weight: 600; }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      }
+
+      .app {
+        display: grid;
+        grid-template-rows: auto 1fr;
+        height: 100%;
+      }
+
+      .topbar {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+        padding: 12px 14px;
+        border-bottom: 1px solid #e5e7eb;
+        background: #fff;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        align-items: center;
+      }
+
+      label {
+        font-size: 12px;
+        color: #374151;
+      }
+
+      input {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 10px;
+        outline: none;
+      }
+
+      input:focus {
+        border-color: #2563eb;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+      }
+
+      button {
+        padding: 10px 12px;
+        border: 1px solid #d1d5db;
+        background: #111827;
+        color: #fff;
+        border-radius: 10px;
+        cursor: pointer;
+      }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .status {
+        font-size: 12px;
+        color: #6b7280;
+        word-break: break-word;
+      }
+
+      #map {
+        width: 100%;
+        height: 100%;
+      }
+
+      @media (max-width: 720px) {
+        .controls {
+          grid-template-columns: 1fr;
+        }
+
+        button {
+          width: 100%;
+        }
+      }
     </style>
   </head>
+
   <body>
-    <div class="card">
-      <h1>Vercel Edge Config (HTML + JS)</h1>
-      <p class="muted">
-        This page fetches values from <code>/api/config</code>, which reads from your Edge Config store.
-      </p>
+    <div class="app">
+      <div class="topbar">
+        <div>
+          <label for="userId">Enter your ID (used later for coordinate lookup)</label>
+        </div>
+        <div class="row">
+          <div class="controls">
+            <input id="userId" type="text" placeholder="e.g. user123" autocomplete="off" />
+            <button id="btnLocate" type="button">Get My Location</button>
+          </div>
+          <div class="status" id="status">Ready.</div>
+        </div>
+      </div>
 
-      <label for="keys">Keys (comma-separated)</label>
-      <input id="keys" placeholder="publicMessage, featureFlag" value="publicMessage" />
-      <button id="load">Load from Edge Config</button>
-
-      <p id="status" class="muted"></p>
-      <p id="error" class="error" hidden></p>
-      <pre id="output">Click "Load" to fetch config…</pre>
+      <div id="map"></div>
     </div>
 
-    <script src="./main.js" defer></script>
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="./app.js"></script>
   </body>
 </html>

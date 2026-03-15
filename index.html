@@ -107,12 +107,19 @@
     <div class="app">
       <div class="topbar">
         <div>
-          <label for="userId">Enter your ID (used later for coordinate lookup)</label>
+          <label for="userId">Your ID (this device will save its location under this ID)</label>
         </div>
         <div class="row">
           <div class="controls">
             <input id="userId" type="text" placeholder="e.g. user123" autocomplete="off" />
             <button id="btnLocate" type="button">Get My Location</button>
+          </div>
+          <div>
+            <label for="searchId">Search an ID (show saved location)</label>
+          </div>
+          <div class="controls">
+            <input id="searchId" type="text" placeholder="e.g. friend123" autocomplete="off" />
+            <button id="btnSearch" type="button">Search</button>
           </div>
           <div class="status" id="status">Ready.</div>
         </div>

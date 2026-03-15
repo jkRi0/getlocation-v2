@@ -42,10 +42,11 @@ export default async function handler(req) {
     return json(
       {
         error: 'Failed to read from Edge Config',
+        id,
         status: resp.status,
         details: text,
       },
-      { status: 500 },
+      { status: resp.status },
     );
   }
 

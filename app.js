@@ -3,13 +3,14 @@
 const els = {
   userId: document.getElementById('userId'),
   btnLocate: document.getElementById('btnLocate'),
+  searchId: document.getElementById('searchId'),
+  btnSearch: document.getElementById('btnSearch'),
   status: document.getElementById('status'),
 };
 
-const STORAGE_KEY = 'getlocation.userId';
-
 let map;
 let marker;
+let searchedMarker;
 
 async function saveLocationToServer(id, lat, lng) {
   const resp = await fetch('/api/location/save', {
@@ -34,29 +35,32 @@ async function saveLocationToServer(id, lat, lng) {
   return data;
 }
 
+async function getLocationFromServer(id) {
+  const resp = await fetch(`/api/location/get?id=${encodeURIComponent(id)}`, {
+    method: 'GET',
+  });
+
+  const data = await resp.json().catch(() => null);
+  if (!resp.ok) {
+    const parts = [];
+    if (data?.error) parts.push(data.error);
+    if (data?.status) parts.push(`upstreamStatus=${data.status}`);
+    if (data?.details) parts.push(`details=${typeof data.details === 'string' ? data.details : JSON.stringify(data.details)}`);
+    const detail = parts.length ? parts.join(' | ') : `HTTP ${resp.status}`;
+    const err = new Error(detail);
+    err.httpStatus = resp.status;
+    throw err;
+  }
+
+  return data;
+}
+
 function setStatus(msg) {
   els.status.textContent = msg;
 }
 
 function normalizeId(raw) {
   return String(raw ?? '').trim();
-}
-
-function loadSavedId() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) els.userId.value = saved;
-  } catch {
-    // ignore
-  }
-}
-
-function saveId(id) {
-  try {
-    localStorage.setItem(STORAGE_KEY, id);
-  } catch {
-    // ignore
-  }
 }
 
 function ensureMap() {
@@ -87,6 +91,21 @@ function setUserMarker(lat, lng, id) {
   map.setView([lat, lng], 16);
 }
 
+function setSearchedMarker(lat, lng, id) {
+  ensureMap();
+
+  const label = id ? `Searched ID: ${id}` : 'Searched location';
+
+  if (!searchedMarker) {
+    searchedMarker = L.marker([lat, lng]).addTo(map);
+  } else {
+    searchedMarker.setLatLng([lat, lng]);
+  }
+
+  searchedMarker.bindPopup(label).openPopup();
+  map.setView([lat, lng], 16);
+}
+
 function getLocation() {
   const id = normalizeId(els.userId.value);
 
@@ -95,8 +114,6 @@ function getLocation() {
     els.userId.focus();
     return;
   }
-
-  saveId(id);
 
   if (!('geolocation' in navigator)) {
     setStatus('Geolocation is not supported in this browser.');
@@ -137,8 +154,42 @@ function getLocation() {
   );
 }
 
+async function searchIdLocation() {
+  const id = normalizeId(els.searchId?.value);
+  if (!id) {
+    setStatus('Please enter an ID to search.');
+    els.searchId?.focus();
+    return;
+  }
+
+  if (els.btnSearch) els.btnSearch.disabled = true;
+  setStatus(`Searching location for ID "${id}"...`);
+
+  try {
+    const data = await getLocationFromServer(id);
+    const value = data?.value;
+    const lat = Number(value?.lat);
+    const lng = Number(value?.lng);
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      setStatus(`No valid coordinates stored for ID "${id}".`);
+      return;
+    }
+
+    setSearchedMarker(lat, lng, id);
+    setStatus(`Showing saved location for ID "${id}".`);
+  } catch (e) {
+    if (e?.httpStatus === 404) {
+      setStatus(`No saved location found for ID "${id}".`);
+    } else {
+      setStatus(`Search failed: ${e?.message || 'Unknown error'}`);
+    }
+  } finally {
+    if (els.btnSearch) els.btnSearch.disabled = false;
+  }
+}
+
 function init() {
-  loadSavedId();
   ensureMap();
 
   els.btnLocate.addEventListener('click', getLocation);
@@ -146,7 +197,12 @@ function init() {
     if (e.key === 'Enter') getLocation();
   });
 
-  setStatus('Enter an ID, then click “Get My Location”.');
+  els.btnSearch?.addEventListener('click', searchIdLocation);
+  els.searchId?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') searchIdLocation();
+  });
+
+  setStatus('Enter your ID to save your location, or search an ID to show its saved location.');
 }
 
 init();

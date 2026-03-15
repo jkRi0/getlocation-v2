@@ -13,12 +13,35 @@ const els = {
 let map;
 let marker;
 let searchedMarker;
-let watchId = null;
 let sharingKey = null;
 let shareSession = 0;
 let saveAbortController = null;
-let viewTimer = null;
 let viewingKey = null;
+let shareTimer = null;
+let viewTimer = null;
+
+function startPolling(fn, intervalMs) {
+  let stopped = false;
+  let inFlight = false;
+
+  const tick = async () => {
+    if (stopped || inFlight) return;
+    inFlight = true;
+    try {
+      await fn();
+    } finally {
+      inFlight = false;
+    }
+  };
+
+  tick();
+  const id = setInterval(tick, intervalMs);
+
+  return () => {
+    stopped = true;
+    clearInterval(id);
+  };
+}
 
 async function saveLocationToServer(id, lat, lng, signal) {
   const resp = await fetch('/api/location/save', {
@@ -95,6 +118,10 @@ function normalizeId(raw) {
   return String(raw ?? '').trim();
 }
 
+function fmtCoord(n) {
+  return Number.isFinite(n) ? n.toFixed(6) : 'NaN';
+}
+
 function ensureMap() {
   if (map) return;
 
@@ -140,11 +167,18 @@ function setSearchedMarker(lat, lng, id) {
 
 function stopViewing() {
   if (viewTimer !== null) {
-    clearInterval(viewTimer);
+    viewTimer();
   }
   viewTimer = null;
   viewingKey = null;
   if (els.btnStopView) els.btnStopView.disabled = true;
+}
+
+function stopSharingTimerOnly() {
+  if (shareTimer !== null) {
+    shareTimer();
+  }
+  shareTimer = null;
 }
 
 function getLocation() {
@@ -161,7 +195,7 @@ function getLocation() {
     return;
   }
 
-  if (watchId !== null) {
+  if (shareTimer !== null) {
     setStatus('Already sharing location. Click “Stop Sharing” to stop.');
     return;
   }
@@ -173,53 +207,60 @@ function getLocation() {
   const session = shareSession;
 
   sharingKey = id;
-  watchId = navigator.geolocation.watchPosition(
-    async (pos) => {
-      if (session !== shareSession) return;
 
-      const { latitude, longitude, accuracy } = pos.coords;
+  const pollOnce = () =>
+    new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 15000,
+      });
+    });
 
-      setUserMarker(latitude, longitude, id);
-      setStatus(`Sharing live location for ID "${id}" (±${Math.round(accuracy)}m). Updating...`);
+  const stop = startPolling(async () => {
+    if (session !== shareSession) return;
 
-      try {
-        if (saveAbortController) saveAbortController.abort();
-        saveAbortController = new AbortController();
-        await saveLocationToServer(id, latitude, longitude, saveAbortController.signal);
-        setStatus(`Sharing live location for ID "${id}" (±${Math.round(accuracy)}m).`);
-      } catch (e) {
-        if (e?.name === 'AbortError') return;
-        setStatus(`Sharing is ON but update failed: ${e?.message || 'Unknown error'}`);
-      }
-
-      if (els.btnStop) els.btnStop.disabled = false;
-      els.btnLocate.disabled = false;
-    },
-    (err) => {
+    let pos;
+    try {
+      pos = await pollOnce();
+    } catch (err) {
       let msg = 'Unable to get your location.';
       if (err?.code === err.PERMISSION_DENIED) msg = 'Permission denied. Please allow location access.';
       if (err?.code === err.POSITION_UNAVAILABLE) msg = 'Position unavailable.';
       if (err?.code === err.TIMEOUT) msg = 'Location request timed out.';
       setStatus(msg);
+      await stopSharing();
+      return;
+    }
 
-      if (watchId !== null) {
-        navigator.geolocation.clearWatch(watchId);
-      }
-      watchId = null;
-      sharingKey = null;
-      els.btnLocate.disabled = false;
-      if (els.btnStop) els.btnStop.disabled = true;
-    },
-    {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 15000,
-    },
-  );
+    const { latitude, longitude, accuracy } = pos.coords;
+
+    setUserMarker(latitude, longitude, id);
+    setStatus(
+      `Sharing live location for ID "${id}" @ (${fmtCoord(latitude)}, ${fmtCoord(longitude)}) (±${Math.round(accuracy)}m). Updating...`,
+    );
+
+    try {
+      if (saveAbortController) saveAbortController.abort();
+      saveAbortController = new AbortController();
+      await saveLocationToServer(id, latitude, longitude, saveAbortController.signal);
+      setStatus(`Sharing live location for ID "${id}" @ (${fmtCoord(latitude)}, ${fmtCoord(longitude)}) (±${Math.round(accuracy)}m).`);
+    } catch (e) {
+      if (e?.name === 'AbortError') return;
+      setStatus(`Sharing is ON but update failed: ${e?.message || 'Unknown error'}`);
+    }
+
+    if (els.btnStop) els.btnStop.disabled = false;
+    els.btnLocate.disabled = false;
+  }, 2000);
+
+  shareTimer = stop;
+  if (els.btnStop) els.btnStop.disabled = false;
+  els.btnLocate.disabled = false;
 }
 
 async function stopSharing() {
-  if (watchId === null) {
+  if (shareTimer === null) {
     setStatus('Not currently sharing.');
     return;
   }
@@ -232,8 +273,7 @@ async function stopSharing() {
     saveAbortController = null;
   }
 
-  navigator.geolocation.clearWatch(watchId);
-  watchId = null;
+  stopSharingTimerOnly();
   sharingKey = null;
   if (els.btnStop) els.btnStop.disabled = true;
 
@@ -280,7 +320,7 @@ async function searchIdLocation() {
     viewingKey = id;
     if (els.btnStopView) els.btnStopView.disabled = false;
 
-    viewTimer = setInterval(async () => {
+    viewTimer = startPolling(async () => {
       if (!viewingKey) return;
       try {
         const d = await getLocationFromServer(viewingKey);
@@ -300,9 +340,9 @@ async function searchIdLocation() {
           setStatus(`Viewing stopped: ${e?.message || 'Unknown error'}`);
         }
       }
-    }, 1000);
+    }, 2000);
 
-    setStatus(`Viewing ID "${id}" (auto-updating every 1s).`);
+    setStatus(`Viewing ID "${id}" @ (${fmtCoord(lat)}, ${fmtCoord(lng)}) (auto-updating every 2s).`);
   } catch (e) {
     if (e?.httpStatus === 404) {
       setStatus(`No saved location found for ID "${id}".`);

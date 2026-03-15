@@ -12,6 +12,12 @@ function json(data, init = {}) {
   });
 }
 
+function toEdgeConfigKey(id) {
+  const normalized = String(id ?? '').trim();
+  const key = normalized.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 256);
+  return { normalized, key };
+}
+
 export default async function handler(req) {
   if (req.method !== 'POST') {
     return json({ error: 'Method Not Allowed' }, { status: 405 });
@@ -35,7 +41,10 @@ export default async function handler(req) {
   const lat = Number(body?.lat);
   const lng = Number(body?.lng);
 
-  if (!id) return json({ error: 'id is required' }, { status: 400 });
+  const { normalized: normalizedId, key } = toEdgeConfigKey(id);
+
+  if (!normalizedId) return json({ error: 'id is required' }, { status: 400 });
+  if (!key) return json({ error: 'id is invalid' }, { status: 400 });
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
     return json({ error: 'lat and lng must be numbers' }, { status: 400 });
   }
@@ -59,7 +68,7 @@ export default async function handler(req) {
       items: [
         {
           operation: 'upsert',
-          key: id,
+          key,
           value,
         },
       ],
@@ -80,10 +89,11 @@ export default async function handler(req) {
         error: 'Failed to update Edge Config',
         status: resp.status,
         details: data,
+        key,
       },
-      { status: 500 },
+      { status: resp.status },
     );
   }
 
-  return json({ status: 'ok', id, value });
+  return json({ status: 'ok', id: normalizedId, key, value });
 }

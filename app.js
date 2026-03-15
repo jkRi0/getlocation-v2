@@ -22,7 +22,12 @@ async function saveLocationToServer(id, lat, lng) {
 
   const data = await resp.json().catch(() => null);
   if (!resp.ok) {
-    const detail = data?.error || `HTTP ${resp.status}`;
+    const parts = [];
+    if (data?.error) parts.push(data.error);
+    if (data?.key) parts.push(`key=${data.key}`);
+    if (data?.status) parts.push(`upstreamStatus=${data.status}`);
+    if (data?.details) parts.push(`details=${typeof data.details === 'string' ? data.details : JSON.stringify(data.details)}`);
+    const detail = parts.length ? parts.join(' | ') : `HTTP ${resp.status}`;
     throw new Error(detail);
   }
 

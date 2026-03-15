@@ -15,16 +15,19 @@ let marker;
 let searchedMarker;
 let watchId = null;
 let sharingKey = null;
+let shareSession = 0;
+let saveAbortController = null;
 let viewTimer = null;
 let viewingKey = null;
 
-async function saveLocationToServer(id, lat, lng) {
+async function saveLocationToServer(id, lat, lng, signal) {
   const resp = await fetch('/api/location/save', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ id, lat, lng }),
+    signal,
   });
 
   const data = await resp.json().catch(() => null);
@@ -166,18 +169,26 @@ function getLocation() {
   els.btnLocate.disabled = true;
   setStatus('Requesting location permission...');
 
+  shareSession += 1;
+  const session = shareSession;
+
   sharingKey = id;
   watchId = navigator.geolocation.watchPosition(
     async (pos) => {
+      if (session !== shareSession) return;
+
       const { latitude, longitude, accuracy } = pos.coords;
 
       setUserMarker(latitude, longitude, id);
       setStatus(`Sharing live location for ID "${id}" (±${Math.round(accuracy)}m). Updating...`);
 
       try {
-        await saveLocationToServer(id, latitude, longitude);
+        if (saveAbortController) saveAbortController.abort();
+        saveAbortController = new AbortController();
+        await saveLocationToServer(id, latitude, longitude, saveAbortController.signal);
         setStatus(`Sharing live location for ID "${id}" (±${Math.round(accuracy)}m).`);
       } catch (e) {
+        if (e?.name === 'AbortError') return;
         setStatus(`Sharing is ON but update failed: ${e?.message || 'Unknown error'}`);
       }
 
@@ -214,6 +225,12 @@ async function stopSharing() {
   }
 
   const id = sharingKey;
+
+  shareSession += 1;
+  if (saveAbortController) {
+    saveAbortController.abort();
+    saveAbortController = null;
+  }
 
   navigator.geolocation.clearWatch(watchId);
   watchId = null;
